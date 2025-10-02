@@ -1,9 +1,12 @@
+// /ui/chat/ChatScreen.kt
+
 package com.example.whydo.ui.chat
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,59 +21,96 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.whydo.R // R 클래스를 임포트해야 drawable 리소스를 찾을 수 있습니다.
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.whydo.R
 import com.example.whydo.data.model.Author
 import com.example.whydo.data.model.ChatMessage
+import com.example.whydo.ui.theme.WhyDoTheme
+import kotlinx.coroutines.launch
 
-// --- 채팅 화면 전체 구조 ---
 @Composable
-fun ChatScreen(messages: List<ChatMessage>) {
+fun ChatScreen(
+    viewModel: ChatViewModel = viewModel()
+) {
+    // 1. ViewModel의 UI 상태를 구독
+    val uiState by viewModel.uiState.collectAsState()
     var textState by remember { mutableStateOf("") }
+    val scrollState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("whyDo? 대화하기") }) },
         bottomBar = {
             // 하단 채팅 입력창
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
                     value = textState,
                     onValueChange = { textState = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("메시지를 입력하세요") }
+                    placeholder = { Text("메시지를 입력하세요") },
+                    enabled = !uiState.isLoading // 로딩 중일 때는 입력 비활성화
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                IconButton(onClick = { /* TODO: 메시지 전송 로직 */ }) {
+                // 2. 전송 버튼 클릭 시 ViewModel의 sendMessage 함수 호출
+                IconButton(
+                    onClick = {
+                        if (textState.isNotBlank()) {
+                            viewModel.sendMessage(textState)
+                            textState = "" // 입력창 비우기
+                        }
+                    },
+                    enabled = !uiState.isLoading && textState.isNotBlank()
+                ) {
                     Icon(Icons.Filled.Send, contentDescription = "Send message")
                 }
             }
         }
     ) { innerPadding ->
-        // 메시지 리스트
+        // 3. ViewModel의 messages 리스트를 화면에 표시
         LazyColumn(
+            state = scrollState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 8.dp),
-            reverseLayout = true // 새로운 메시지가 항상 아래에 오도록 리스트를 뒤집음
         ) {
-            items(messages.reversed()) { message ->
+            items(uiState.messages) { message ->
                 MessageBubble(message = message)
                 Spacer(modifier = Modifier.height(8.dp))
+            }
+            // 4. 로딩 중일 때 로딩 인디케이터 표시
+            if (uiState.isLoading) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+            }
+        }
+    }
+
+    // 메시지가 추가될 때마다 자동으로 스크롤을 맨 아래로 이동
+    LaunchedEffect(uiState.messages.size) {
+        if (uiState.messages.isNotEmpty()) {
+            coroutineScope.launch {
+                scrollState.animateScrollToItem(uiState.messages.size - 1)
             }
         }
     }
 }
 
-// --- 메시지 말풍선 컴포넌트 ---
+// --- 아래 UI 컴포넌트 함수들이 누락되었습니다 ---
+
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val horizontalArrangement = if (message.author == Author.USER) Arrangement.End else Arrangement.Start
-    val bubbleColor = if (message.author == Author.USER) Color(0xFFE1F5FE) else Color(0xFFE8F5E9)
+    val bubbleColor = if (message.author == Author.USER) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -118,20 +158,13 @@ fun MessageBox(bubbleColor: Color, message: ChatMessage) {
     }
 }
 
-
-// --- 프리뷰를 위한 샘플 데이터 및 실행 ---
-// 중요: 이 코드가 정상적으로 보이려면, res/drawable 폴더에
-// profile_ai.png와 profile_user.png 이미지가 있어야 합니다.
-// 없다면 임시로 R.drawable.ic_launcher_foreground 로 대체해서 테스트할 수 있습니다.
-val sampleMessages = listOf(
-    ChatMessage(Author.AI, "안녕하세요! 어떤 고민이 있으신가요?", R.drawable.ic_launcher_foreground, "Caroline"),
-    ChatMessage(Author.USER, "요즘 진로 때문에 고민이 많아요.", R.drawable.ic_launcher_foreground, "John"),
-    ChatMessage(Author.AI, "진로 고민이 많으시군요. 조금 더 자세히 이야기해주실 수 있나요?", R.drawable.ic_launcher_foreground, "Caroline"),
-    ChatMessage(Author.USER, "네, 제가 뭘 잘하는지, 뭘 하고 싶은지 잘 모르겠어요. 너무 막막하게 느껴져요.", R.drawable.ic_launcher_foreground, "John")
-)
+// --- Preview 코드 ---
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 640)
 @Composable
 fun ChatScreenPreview() {
-    ChatScreen(messages = sampleMessages)
+    // Preview는 이제 ViewModel을 직접 생성해서 테스트합니다.
+    WhyDoTheme {
+        ChatScreen(viewModel = ChatViewModel())
+    }
 }
