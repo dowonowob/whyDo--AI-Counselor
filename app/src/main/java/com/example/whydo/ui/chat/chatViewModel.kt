@@ -2,6 +2,8 @@
 
 package com.example.whydo.ui.chat
 
+import android.content.Context
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,22 +19,20 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Locale
 
-// 화면의 모든 상태를 담는 데이터 클래스
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isLoading: Boolean = false
 )
 
-class ChatViewModel : ViewModel() {
+class ChatViewModel : ViewModel(), TextToSpeech.OnInitListener {
 
-    // 1. UI 상태를 위한 StateFlow 선언
-    // _uiState: ViewModel 내부에서만 수정 가능한 '비공개' 상태
+    private var tts: TextToSpeech? = null
+
     private val _uiState = MutableStateFlow(ChatUiState())
-    // uiState: UI에서는 읽기만 가능한 '공개' 상태
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    // 2. 시스템 프롬프트 정의 (AI의 역할 부여)
     private val systemMessage = Message(
         role = "system",
         content = """
@@ -44,73 +44,57 @@ class ChatViewModel : ViewModel() {
         """.trimIndent()
     )
 
-    // 3. 사용자가 메시지를 보냈을 때 호출될 함수
+    fun initTts(context: Context) {
+        tts = TextToSpeech(context, this)
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts?.setLanguage(Locale.KOREAN)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e("TTS", "The Language is not supported!")
+            }
+        } else {
+            Log.e("TTS", "TTS Initialization Failed!")
+        }
+    }
+
+    private fun speak(text: String) {
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "")
+    }
+
     fun sendMessage(userMessageText: String) {
-        // 로딩 중이거나 입력이 비어있으면 아무것도 하지 않음
-        if (_uiState.value.isLoading || userMessageText.isBlank()) {
-            return
-        }
+        if (_uiState.value.isLoading || userMessageText.isBlank()) return
 
-        // 4. 사용자 메시지를 UI에 바로 추가하고, 로딩 상태로 변경
-        val userMessage = ChatMessage(
-            author = Author.USER,
-            content = userMessageText,
-            authorImageResId = R.drawable.profile_user, // 실제 이미지 리소스 사용
-            authorName = "John"
-        )
-        _uiState.update { currentState ->
-            currentState.copy(
-                messages = currentState.messages + userMessage,
-                isLoading = true
-            )
-        }
+        val userMessage = ChatMessage(Author.USER, userMessageText, R.drawable.profile_user, "John")
+        _uiState.update { it.copy(messages = it.messages + userMessage, isLoading = true) }
 
-        // 5. API 호출
         viewModelScope.launch {
             try {
-                // 전체 대화 기록을 API에 보낼 형식으로 변환
-                val history = (_uiState.value.messages).map {
-                    Message(
-                        role = if (it.author == Author.USER) "user" else "assistant",
-                        content = it.content
-                    )
-                }
-
+                val history = _uiState.value.messages.map { Message(if (it.author == Author.USER) "user" else "assistant", it.content) }
                 val request = ChatRequest(messages = listOf(systemMessage) + history)
                 val apiKey = "Bearer ${BuildConfig.OPENAI_API_KEY}"
-
                 val response = ApiClient.openAiApiService.getChatCompletion(apiKey, request)
                 val aiResponseContent = response.choices.firstOrNull()?.message?.content ?: "죄송해요, 답변을 생성할 수 없어요."
 
-                // 6. AI 응답을 UI에 추가하고, 로딩 상태 해제
-                val aiMessage = ChatMessage(
-                    author = Author.AI,
-                    content = aiResponseContent,
-                    authorImageResId = R.drawable.profile_ai, // 실제 이미지 리소스 사용
-                    authorName = "Caroline"
-                )
-                _uiState.update { currentState ->
-                    currentState.copy(
-                        messages = currentState.messages + aiMessage,
-                        isLoading = false
-                    )
-                }
+                speak(aiResponseContent) // AI 답변 음성 출력
+
+                val aiMessage = ChatMessage(Author.AI, aiResponseContent, R.drawable.profile_ai, "Caroline")
+                _uiState.update { it.copy(messages = it.messages + aiMessage, isLoading = false) }
+
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "API Call Failed: ${e.message}")
-                // 7. 에러 발생 시 UI에 에러 메시지 표시하고, 로딩 상태 해제
-                val errorMessage = ChatMessage(
-                    author = Author.AI,
-                    content = "오류가 발생했습니다: ${e.message}",
-                    authorImageResId = R.drawable.profile_ai,
-                    authorName = "Caroline"
-                )
-                _uiState.update { currentState ->
-                    currentState.copy(
-                        messages = currentState.messages + errorMessage,
-                        isLoading = false
-                    )
-                }
+                val errorText = "오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+                speak(errorText) // 에러 메시지 음성 출력
+                val errorMessage = ChatMessage(Author.AI, errorText, R.drawable.profile_ai, "Caroline")
+                _uiState.update { it.copy(messages = it.messages + errorMessage, isLoading = false) }
             }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        tts?.stop()
+        tts?.shutdown()
     }
 }
