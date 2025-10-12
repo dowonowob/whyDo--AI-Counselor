@@ -11,7 +11,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,11 +27,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,12 +42,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -64,24 +67,17 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val logTag = "VoiceDebug" // 디버깅용 로그 태그
+    var textState by remember { mutableStateOf("") } // 텍스트 입력을 위한 상태
 
-    LaunchedEffect(key1 = Unit) {
-        viewModel.initTts(context)
-    }
-
+    // --- 음성 인식 및 권한 요청 로직 (기존과 동일) ---
     val speechRecognitionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        Log.d(logTag, "5. Speech recognizer result received. Code: ${result.resultCode}") // 로그 추가
         if (result.resultCode == Activity.RESULT_OK) {
             val data: Intent? = result.data
             val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             if (!results.isNullOrEmpty()) {
-                val spokenText = results[0]
-                Log.d(logTag, "6. Spoken text extracted: $spokenText") // 로그 추가
-                viewModel.sendMessage(spokenText)
+                viewModel.sendMessage(results[0])
             }
         }
     }
@@ -89,41 +85,63 @@ fun ChatScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
-        Log.d(logTag, "3. Permission result received. Granted: $isGranted") // 로그 추가
         if (isGranted) {
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
                 putExtra(RecognizerIntent.EXTRA_PROMPT, "말씀해주세요...")
             }
-            Log.d(logTag, "4. Permission GRANTED. Launching speech recognizer...") // 로그 추가
             speechRecognitionLauncher.launch(intent)
         } else {
-            Log.d(logTag, "4. Permission DENIED.") // 로그 추가
+            Log.d("Permission", "RECORD_AUDIO permission denied.")
         }
     }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("whyDo? 대화하기") }) },
         bottomBar = {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                contentAlignment = Alignment.Center
+            // --- 여기가 핵심: 하이브리드 입력창 ---
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = {
-                        Log.d(logTag, "1. Mic button clicked.") // 로그 추가
-                        Log.d(logTag, "2. Launching permission request...") // 로그 추가
-                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                    },
-                    modifier = Modifier.size(60.dp),
+                // 텍스트 입력 필드
+                OutlinedTextField(
+                    value = textState,
+                    onValueChange = { textState = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("메시지를 입력하거나 마이크를 누르세요") },
                     enabled = !uiState.isLoading
-                ) {
-                    Icon(Icons.Filled.Mic, contentDescription = "Speak", modifier = Modifier.fillMaxSize())
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // 조건부 아이콘 버튼: 텍스트가 있으면 전송, 없으면 마이크
+                if (textState.isNotBlank()) {
+                    // 전송 버튼
+                    IconButton(
+                        onClick = {
+                            viewModel.sendMessage(textState)
+                            textState = "" // 입력창 비우기
+                        },
+                        enabled = !uiState.isLoading
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send message")
+                    }
+                } else {
+                    // 마이크 버튼
+                    IconButton(
+                        onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                        enabled = !uiState.isLoading
+                    ) {
+                        Icon(Icons.Filled.Mic, contentDescription = "Start voice input")
+                    }
                 }
             }
         }
     ) { innerPadding ->
+        // --- 나머지 UI 로직은 기존과 동일 ---
         LazyColumn(
             state = scrollState,
             modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 8.dp),
@@ -154,7 +172,7 @@ fun ChatScreen(
     }
 }
 
-// ... MessageBubble 등 나머지 함수들은 그대로 유지 ...
+// ... MessageBubble, ProfileImage, MessageBox, Preview 함수는 기존과 동일하게 유지 ...
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val horizontalArrangement = if (message.author == Author.USER) Arrangement.End else Arrangement.Start
