@@ -2,17 +2,50 @@
 
 package com.example.whydo.ui.chat
 
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,7 +55,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.whydo.R
 import com.example.whydo.data.model.Author
 import com.example.whydo.data.model.ChatMessage
 import com.example.whydo.ui.theme.WhyDoTheme
@@ -32,56 +64,92 @@ import kotlinx.coroutines.launch
 fun ChatScreen(
     viewModel: ChatViewModel = viewModel()
 ) {
-    // 1. ViewModel의 UI 상태를 구독
     val uiState by viewModel.uiState.collectAsState()
-    var textState by remember { mutableStateOf("") }
     val scrollState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    var textState by remember { mutableStateOf("") } // 텍스트 입력을 위한 상태
+
+    // --- 음성 인식 및 권한 요청 로직 (기존과 동일) ---
+    val speechRecognitionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data: Intent? = result.data
+            val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            if (!results.isNullOrEmpty()) {
+                viewModel.sendMessage(results[0])
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "말씀해주세요...")
+            }
+            speechRecognitionLauncher.launch(intent)
+        } else {
+            Log.d("Permission", "RECORD_AUDIO permission denied.")
+        }
+    }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("whyDo? 대화하기") }) },
         bottomBar = {
-            // 하단 채팅 입력창
+            // --- 여기가 핵심: 하이브리드 입력창 ---
             Row(
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 텍스트 입력 필드
                 OutlinedTextField(
                     value = textState,
                     onValueChange = { textState = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("메시지를 입력하세요") },
-                    enabled = !uiState.isLoading // 로딩 중일 때는 입력 비활성화
+                    placeholder = { Text("메시지를 입력하거나 마이크를 누르세요") },
+                    enabled = !uiState.isLoading
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                // 2. 전송 버튼 클릭 시 ViewModel의 sendMessage 함수 호출
-                IconButton(
-                    onClick = {
-                        if (textState.isNotBlank()) {
+
+                // 조건부 아이콘 버튼: 텍스트가 있으면 전송, 없으면 마이크
+                if (textState.isNotBlank()) {
+                    // 전송 버튼
+                    IconButton(
+                        onClick = {
                             viewModel.sendMessage(textState)
                             textState = "" // 입력창 비우기
-                        }
-                    },
-                    enabled = !uiState.isLoading && textState.isNotBlank()
-                ) {
-                    Icon(Icons.Filled.Send, contentDescription = "Send message")
+                        },
+                        enabled = !uiState.isLoading
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send message")
+                    }
+                } else {
+                    // 마이크 버튼
+                    IconButton(
+                        onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                        enabled = !uiState.isLoading
+                    ) {
+                        Icon(Icons.Filled.Mic, contentDescription = "Start voice input")
+                    }
                 }
             }
         }
     ) { innerPadding ->
-        // 3. ViewModel의 messages 리스트를 화면에 표시
+        // --- 나머지 UI 로직은 기존과 동일 ---
         LazyColumn(
             state = scrollState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 8.dp),
         ) {
             items(uiState.messages) { message ->
                 MessageBubble(message = message)
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            // 4. 로딩 중일 때 로딩 인디케이터 표시
             if (uiState.isLoading) {
                 item {
                     Row(
@@ -95,7 +163,6 @@ fun ChatScreen(
         }
     }
 
-    // 메시지가 추가될 때마다 자동으로 스크롤을 맨 아래로 이동
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
             coroutineScope.launch {
@@ -105,8 +172,7 @@ fun ChatScreen(
     }
 }
 
-// --- 아래 UI 컴포넌트 함수들이 누락되었습니다 ---
-
+// ... MessageBubble, ProfileImage, MessageBox, Preview 함수는 기존과 동일하게 유지 ...
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val horizontalArrangement = if (message.author == Author.USER) Arrangement.End else Arrangement.Start
@@ -135,9 +201,7 @@ fun ProfileImage(message: ChatMessage) {
         Image(
             painter = painterResource(id = message.authorImageResId),
             contentDescription = "${message.authorName} profile picture",
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
+            modifier = Modifier.size(40.dp).clip(CircleShape)
         )
         Text(text = message.authorName, fontSize = 12.sp)
     }
@@ -158,13 +222,11 @@ fun MessageBox(bubbleColor: Color, message: ChatMessage) {
     }
 }
 
-// --- Preview 코드 ---
-
 @Preview(showBackground = true, widthDp = 360, heightDp = 640)
 @Composable
 fun ChatScreenPreview() {
-    // Preview는 이제 ViewModel을 직접 생성해서 테스트합니다.
     WhyDoTheme {
+        @Suppress("ViewModelConstructorInComposable")
         ChatScreen(viewModel = ChatViewModel())
     }
 }

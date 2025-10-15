@@ -3,13 +3,17 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.compiler)
 }
 
 fun getApiKey(property: String): String {
-    val properties = Properties()
-    properties.load(project.rootProject.file("local.properties").inputStream())
-    return properties.getProperty(property)
+    val properties = Properties() // 'java.util'을 지움
+    val localPropertiesFile = project.rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        properties.load(localPropertiesFile.inputStream())
+    }
+    // 키가 없을 경우, null 대신 빈 문자열("")을 반환하도록 수정
+    return properties.getProperty(property, "")
 }
 
 android {
@@ -64,11 +68,14 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     // Retrofit (서버 통신 라이브러리)
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    // Gson Converter (서버와 주고받는 JSON 데이터를 Kotlin 객체로 변환해주는 도구)
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.0")
+    implementation(libs.retrofit)
+    // Gson Converter (JSON 데이터 변환 도구)
+    implementation(libs.retrofit.converter.gson)
+    // 확장 아이콘
+    implementation(libs.androidx.material.icons.extended)
+    // ViewModel
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
