@@ -18,12 +18,12 @@ fun getApiKey(property: String): String {
 
 android {
     namespace = "com.example.whydo"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.whydo"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
