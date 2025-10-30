@@ -98,7 +98,7 @@ fun ChatScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("whyDo? 대화하기") }) },
+        topBar = { TopAppBar(title = { Text("Chat") }) },
         bottomBar = {
             // --- 여기가 핵심: 하이브리드 입력창 ---
             Row(

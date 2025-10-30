@@ -12,13 +12,7 @@ import com.example.whydo.BuildConfig
 import com.example.whydo.R
 import com.example.whydo.data.model.Author
 import com.example.whydo.data.model.ChatMessage
-// 수정된 network import
-import com.example.whydo.data.network.ApiClient
-import com.example.whydo.data.network.AudioConfig
-import com.example.whydo.data.network.ServerChatRequest
-import com.example.whydo.data.network.TtsInput
-import com.example.whydo.data.network.TtsRequest
-import com.example.whydo.data.network.VoiceSelection
+import com.example.whydo.data.network.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,22 +32,61 @@ class ChatViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    // ⛔️ [삭제됨] ⛔️
-    // 시스템 프롬프트는 이제 Python 서버가 관리합니다.
-    // private val systemMessage = Message(...)
+    // --- [Gemini 수정] 세션 ID를 변수로 관리 ---
+    // (지금은 하드코딩, 나중에 닉네임 입력 UI에서 이 값을 받아오도록 수정)
+    private val currentSessionId = "도도" // "도도", "은도" 등 닉네임으로 변경 가능
+    private val currentUserId = "default_user"
+
+    // --- [Gemini 수정] ViewModel이 생성될 때 대화를 시작하도록 init 블록 추가 ---
+    init {
+        startConversation()
+    }
 
     /**
-     * TTS로 읽기 전에 텍스트에서 불필요한 기호들을 제거합니다.
+     * [Gemini 추가] 앱 시작 시, 또는 새 세션 시작 시 자기소개 메시지를 받아옵니다.
      */
+    private fun startConversation() {
+        // 이미 대화가 시작되었다면 실행하지 않음
+        if (_uiState.value.messages.isNotEmpty()) return
+
+        _uiState.update { it.copy(isLoading = true) } // 로딩 시작
+
+        viewModelScope.launch {
+            try {
+                // "__INIT__"이라는 특수 메시지를 보내 서버에 대화 시작을 알림
+                val request = ServerChatRequest(
+                    message = "__INIT__",
+                    userId = currentUserId,
+                    sessionId = currentSessionId
+                )
+
+                // 서버 호출
+                val response = ApiClient.whyDoApiService.postChatMessage(request)
+                val aiResponseContent = response.response
+
+                // 자기소개 메시지를 화면에 추가
+                val aiMessage = ChatMessage(Author.AI, aiResponseContent, R.drawable.profile_ai, "Caroline")
+                _uiState.update { it.copy(isLoading = false, messages = it.messages + aiMessage) }
+
+                // 자기소개 메시지 음성 재생
+                val cleanText = cleanTextForTts(aiResponseContent)
+                speak(cleanText)
+
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Failed to start conversation: ${e.message}")
+                val errorText = "연결에 실패했습니다. 서버를 확인해주세요."
+                val errorMessage = ChatMessage(Author.AI, errorText, R.drawable.profile_ai, "Caroline")
+                _uiState.update { it.copy(isLoading = false, messages = it.messages + errorMessage) }
+            }
+        }
+    }
+
     private fun cleanTextForTts(text: String): String {
         var cleanText = text.replace(Regex("[*]"), "")
         cleanText = cleanText.replace(Regex("[\\uD83C-\\uDBFF\\uDC00-\\uDFFF]+"), "")
         return cleanText.trim()
     }
 
-    /**
-     * Google Cloud TTS API를 호출하여 음성을 재생합니다.
-     */
     private fun speak(text: String) {
         viewModelScope.launch {
             try {
@@ -62,7 +95,6 @@ class ChatViewModel : ViewModel() {
                     voice = VoiceSelection(languageCode = "ko-KR", name = "ko-KR-Standard-B"),
                     audioConfig = AudioConfig(audioEncoding = "MP3")
                 )
-                // GCP API 키는 Google TTS를 위해 여전히 필요합니다.
                 val response = ApiClient.gcpTtsApiService.synthesize(BuildConfig.GCP_API_KEY, request)
                 val audioBytes = Base64.decode(response.audioContent, Base64.DEFAULT)
                 playAudio(audioBytes)
@@ -72,9 +104,6 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * 전달받은 오디오 데이터를 MediaPlayer로 재생합니다.
-     */
     private fun playAudio(audioBytes: ByteArray) {
         try {
             val tempAudioFile = File.createTempFile("tts_audio", "mp3")
@@ -91,9 +120,6 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * 긴 텍스트를 약 150자 근처의 문장 단위로 자릅니다.
-     */
     private fun splitResponseIntoChunks(text: String): List<String> {
         val chunks = mutableListOf<String>()
         var remainingText = text
@@ -120,11 +146,6 @@ class ChatViewModel : ViewModel() {
         return chunks
     }
 
-    /**
-     * (수정됨) OpenAI가 아닌, 우리 Python 서버로 메시지를 전송합니다.
-     */
-    // /ui/chat/ChatViewModel.kt 의 sendMessage 함수
-
     fun sendMessage(userMessageText: String) {
         if (_uiState.value.isLoading || userMessageText.isBlank()) return
 
@@ -133,20 +154,15 @@ class ChatViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                // [수정됨] 서버에 보낼 요청 객체 생성 (새로운 형식)
+                // [Gemini 수정] 세션 ID를 변수에서 가져오도록 수정
                 val request = ServerChatRequest(
                     message = userMessageText,
-                    userId = "default_user", // 임시 사용자 ID
-                    sessionId = "default_session" // 임시 세션 ID
+                    userId = currentUserId,
+                    sessionId = currentSessionId
                 )
 
-                // [수정됨] 우리 whyDoApiService 호출 (함수 자체는 동일)
                 val response = ApiClient.whyDoApiService.postChatMessage(request)
-
-                // [수정됨] 서버 응답에서 텍스트 추출 (새로운 형식)
-                val aiResponseContent = response.response // .content가 아니라 .response
-
-                // --- (이하 로직은 기존과 동일) ---
+                val aiResponseContent = response.response
 
                 val chunks = splitResponseIntoChunks(aiResponseContent)
                 _uiState.update { it.copy(isLoading = false) }
