@@ -10,17 +10,7 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -29,23 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,21 +30,86 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.whydo.R
 import com.example.whydo.data.model.Author
 import com.example.whydo.data.model.ChatMessage
 import com.example.whydo.ui.theme.WhyDoTheme
 import kotlinx.coroutines.launch
 
+// --- [1. ChatRoute] ---
+// ViewModel과 UI를 연결해주는 껍데기 (실제 앱에서 호출됨)
 @Composable
-fun ChatScreen(
+fun ChatRoute(
     viewModel: ChatViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    ChatScreen(
+        uiState = uiState,
+        onSetSessionId = viewModel::setSessionIdAndStart,
+        onSendMessage = viewModel::sendMessage
+    )
+}
+
+// --- [2. ChatScreen] ---
+// 순수하게 UI만 그리는 함수 (ViewModel 없음 -> 프리뷰 가능!)
+@Composable
+fun ChatScreen(
+    uiState: ChatUiState,
+    onSetSessionId: (String) -> Unit,
+    onSendMessage: (String) -> Unit
+) {
+    // 1. 세션 ID가 없으면 닉네임 입력 팝업
+    if (uiState.sessionId == null) {
+        NicknameEntryDialog(onConfirm = onSetSessionId)
+    } else {
+        // 2. 세션 ID가 있으면 채팅 화면 표시
+        ChatContent(
+            uiState = uiState,
+            onSendMessage = onSendMessage
+        )
+    }
+}
+
+// --- [3. NicknameEntryDialog] ---
+@Composable
+fun NicknameEntryDialog(onConfirm: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = { /* 닫기 방지 */ },
+        title = { Text("대화 시작하기") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("닉네임(대화 ID)을 입력하세요") }
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(text) },
+                enabled = text.isNotBlank()
+            ) {
+                Text("시작")
+            }
+        }
+    )
+}
+
+// --- [4. ChatContent] ---
+// 실제 채팅방 내부 UI
+@OptIn(ExperimentalMaterial3Api::class) // TopAppBar용
+@Composable
+fun ChatContent(
+    uiState: ChatUiState,
+    onSendMessage: (String) -> Unit
+) {
     val scrollState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    var textState by remember { mutableStateOf("") } // 텍스트 입력을 위한 상태
+    var textState by remember { mutableStateOf("") }
 
-    // --- 음성 인식 및 권한 요청 로직 (기존과 동일) ---
+    // --- 음성 인식 및 권한 요청 로직 ---
     val speechRecognitionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -77,7 +117,7 @@ fun ChatScreen(
             val data: Intent? = result.data
             val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             if (!results.isNullOrEmpty()) {
-                viewModel.sendMessage(results[0])
+                onSendMessage(results[0])
             }
         }
     }
@@ -98,16 +138,15 @@ fun ChatScreen(
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Chat") }) },
+        topBar = { TopAppBar(title = { Text("Chat (${uiState.sessionId})") }) },
         bottomBar = {
-            // --- 여기가 핵심: 하이브리드 입력창 ---
+            // 하이브리드 입력창
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 텍스트 입력 필드
                 OutlinedTextField(
                     value = textState,
                     onValueChange = { textState = it },
@@ -117,20 +156,17 @@ fun ChatScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // 조건부 아이콘 버튼: 텍스트가 있으면 전송, 없으면 마이크
                 if (textState.isNotBlank()) {
-                    // 전송 버튼
                     IconButton(
                         onClick = {
-                            viewModel.sendMessage(textState)
-                            textState = "" // 입력창 비우기
+                            onSendMessage(textState)
+                            textState = ""
                         },
                         enabled = !uiState.isLoading
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send message")
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send text message")
                     }
                 } else {
-                    // 마이크 버튼
                     IconButton(
                         onClick = { permissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                         enabled = !uiState.isLoading
@@ -141,28 +177,37 @@ fun ChatScreen(
             }
         }
     ) { innerPadding ->
-        // --- 나머지 UI 로직은 기존과 동일 ---
-        LazyColumn(
-            state = scrollState,
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 8.dp),
+        // 스크롤 레이아웃
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
         ) {
-            items(uiState.messages) { message ->
-                MessageBubble(message = message)
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-            if (uiState.isLoading) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator()
+            LazyColumn(
+                state = scrollState,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp)
+            ) {
+                items(uiState.messages) { message ->
+                    MessageBubble(message = message)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                if (uiState.isLoading) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
                     }
                 }
             }
         }
     }
 
+    // 자동 스크롤
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
             coroutineScope.launch {
@@ -172,7 +217,7 @@ fun ChatScreen(
     }
 }
 
-// ... MessageBubble, ProfileImage, MessageBox, Preview 함수는 기존과 동일하게 유지 ...
+// --- [5. MessageBubble & ProfileImage & MessageBox] ---
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val horizontalArrangement = if (message.author == Author.USER) Arrangement.End else Arrangement.Start
@@ -222,11 +267,35 @@ fun MessageBox(bubbleColor: Color, message: ChatMessage) {
     }
 }
 
+// --- [6. Previews] ---
 @Preview(showBackground = true, widthDp = 360, heightDp = 640)
 @Composable
-fun ChatScreenPreview() {
+fun ChatScreenPreview_NoSession() {
     WhyDoTheme {
-        @Suppress("ViewModelConstructorInComposable")
-        ChatScreen(viewModel = ChatViewModel())
+        // 세션 ID가 없는 상태 (팝업이 뜨는 상태)
+        ChatScreen(
+            uiState = ChatUiState(sessionId = null), // 가짜 데이터 (세션 없음)
+            onSetSessionId = {},
+            onSendMessage = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 640)
+@Composable
+fun ChatScreenPreview_WithSession() {
+    WhyDoTheme {
+        // 세션 ID가 있는 상태 (채팅 화면)
+        ChatScreen(
+            uiState = ChatUiState(
+                sessionId = "TestUser", // 가짜 데이터 (세션 있음)
+                messages = listOf(
+                    ChatMessage(Author.AI, "안녕하세요!", R.drawable.profile_ai, "AI"),
+                    ChatMessage(Author.USER, "반가워요", R.drawable.profile_user, "Me")
+                )
+            ),
+            onSetSessionId = {},
+            onSendMessage = {}
+        )
     }
 }

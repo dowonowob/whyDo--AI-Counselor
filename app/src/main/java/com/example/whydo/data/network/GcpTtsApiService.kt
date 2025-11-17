@@ -1,7 +1,4 @@
-// /data/network/GcpTtsApiService.kt
-
 package com.example.whydo.data.network
-
 import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.Query
@@ -13,9 +10,16 @@ data class TtsRequest(
     val audioConfig: AudioConfig
 )
 
-data class TtsInput(val text: String)
+// [수정 1] SSML 지원 (문장 쉼표 기능)
+data class TtsInput(val ssml: String)
+
 data class VoiceSelection(val languageCode: String, val name: String)
-data class AudioConfig(val audioEncoding: String = "MP3")
+
+// [수정 2] speakingRate 지원 (음성 속도 조절 기능)
+data class AudioConfig(
+    val audioEncoding: String = "MP3",
+    val speakingRate: Double = 1.0 // 1.0이 기본 속도
+)
 
 // Google TTS API로부터 받을 응답 형식
 data class TtsResponse(
