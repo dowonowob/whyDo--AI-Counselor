@@ -24,7 +24,7 @@ import java.io.File
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isLoading: Boolean = false,
-    val sessionId: String? = null // 👈 [Gemini 수정] 세션 ID를 UiState로 관리
+    val sessionId: String? = null
 )
 
 class ChatViewModel : ViewModel() {
@@ -33,47 +33,111 @@ class ChatViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    // ⛔️ [Gemini 수정] 하드코딩된 세션 ID 제거
-    // private val currentSessionId = "도도"
-    private val currentUserId = "default_user"
+    private var currentUserId = ""
+    private var currentCategory: String? = null
 
-    // ⛔️ [Gemini 수정] init 블록에서 startConversation() 호출 제거
-    // init { startConversation() }
+    fun setInfoAndStart(userId: String, sessionId: String, category: String? = null) {
+        if (this.currentUserId == userId && _uiState.value.sessionId == sessionId && _uiState.value.messages.isNotEmpty()) return
 
-    /**
-     * [Gemini 수정] 닉네임(세션 ID)이 설정되면 대화를 시작합니다.
-     */
-    fun setSessionIdAndStart(sessionId: String) {
-        if (sessionId.isBlank()) return // 닉네임이 비어있으면 무시
-        _uiState.update { it.copy(sessionId = sessionId) }
-        startConversation(sessionId) // 닉네임을 가지고 대화 시작
+        this.currentUserId = userId
+        this.currentCategory = category
+
+        _uiState.update { it.copy(sessionId = sessionId, messages = emptyList()) } // 메시지 초기화
+        loadHistoryOrStart(sessionId)
     }
 
     /**
-     * [Gemini 수정] 세션 ID를 인자로 받도록 변경
+     * 기록이 있으면 불러오고, 없으면 새로 시작
      */
-    private fun startConversation(sessionId: String) {
+    private fun loadHistoryOrStart(sessionId: String) {
         _uiState.update { it.copy(isLoading = true) }
 
         viewModelScope.launch {
             try {
+                // [수정] userId 인자 제거! (토큰이 있으니까)
+                val historyResponse = ApiClient.whyDoApiService.getChatHistory(sessionId)
+
+                if (historyResponse.messages.isNotEmpty()) {
+                    // 2. 기록이 있으면 화면에 표시
+                    val chatMessages = historyResponse.messages.map { item ->
+                        val author = if (item.role == "user") Author.USER else Author.AI
+                        val profile = if (author == Author.USER) R.drawable.profile_user else R.drawable.profile_ai
+                        val name = if (author == Author.USER) "나" else "은도"
+                        ChatMessage(author, item.content, profile, name)
+                    }
+                    _uiState.update { it.copy(isLoading = false, messages = chatMessages) }
+                } else {
+                    // 3. 기록이 없으면(새 대화면) __INIT__ 전송
+                    startNewConversation(sessionId)
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "History load failed: ${e.message}")
+                // 에러 나면 그냥 새 대화처럼 시작 시도
+                startNewConversation(sessionId)
+            }
+        }
+    }
+
+    private suspend fun startNewConversation(sessionId: String) {
+        try {
+            val request = ServerChatRequest(
+                message = "__INIT__",
+                userId = currentUserId,
+                sessionId = sessionId,
+                category = currentCategory
+            )
+            val response = ApiClient.whyDoApiService.postChatMessage(request)
+            val aiResponseContent = response.response
+
+            val aiMessage = ChatMessage(Author.AI, aiResponseContent, R.drawable.profile_ai, "은도")
+            _uiState.update { it.copy(isLoading = false, messages = it.messages + aiMessage) }
+
+            val cleanText = cleanTextForTts(aiResponseContent)
+            speak(cleanText)
+
+        } catch (e: Exception) {
+            Log.e("ChatViewModel", "Start conversation failed: ${e.message}")
+            _uiState.update { it.copy(isLoading = false) }
+        }
+    }
+
+    fun sendMessage(userMessageText: String) {
+        val sessionId = _uiState.value.sessionId
+        if (_uiState.value.isLoading || userMessageText.isBlank() || sessionId == null) return
+
+        val userMessage = ChatMessage(Author.USER, userMessageText, R.drawable.profile_user, "나")
+        _uiState.update { it.copy(messages = it.messages + userMessage, isLoading = true) }
+
+        viewModelScope.launch {
+            try {
                 val request = ServerChatRequest(
-                    message = "__INIT__",
+                    message = userMessageText,
                     userId = currentUserId,
-                    sessionId = sessionId // 👈 전달받은 sessionId 사용
+                    sessionId = sessionId,
+                    category = currentCategory
                 )
+
                 val response = ApiClient.whyDoApiService.postChatMessage(request)
                 val aiResponseContent = response.response
-                val aiMessage = ChatMessage(Author.AI, aiResponseContent, R.drawable.profile_ai, "은도")
-                _uiState.update { it.copy(isLoading = false, messages = it.messages + aiMessage) }
+
+                val chunks = splitResponseIntoChunks(aiResponseContent)
+                _uiState.update { it.copy(isLoading = false) }
+
+                chunks.forEach { chunk ->
+                    val aiMessage = ChatMessage(Author.AI, chunk, R.drawable.profile_ai, "은도")
+                    _uiState.update { it.copy(messages = it.messages + aiMessage) }
+                    delay(500)
+                }
+
                 val cleanText = cleanTextForTts(aiResponseContent)
                 speak(cleanText)
 
             } catch (e: Exception) {
-                Log.e("ChatViewModel", "Failed to start conversation: ${e.message}")
-                val errorText = "연결에 실패했습니다. 서버를 확인해주세요."
+                Log.e("ChatViewModel", "API Call Failed: ${e.message}")
+                val errorText = "오류가 발생했습니다. 서버가 켜져있는지 확인해주세요."
+                speak(errorText)
                 val errorMessage = ChatMessage(Author.AI, errorText, R.drawable.profile_ai, "은도")
-                _uiState.update { it.copy(isLoading = false, messages = it.messages + errorMessage) }
+                _uiState.update { it.copy(messages = it.messages + errorMessage, isLoading = false) }
             }
         }
     }
@@ -114,6 +178,7 @@ class ChatViewModel : ViewModel() {
         try {
             val tempAudioFile = File.createTempFile("tts_audio", "mp3")
             tempAudioFile.writeBytes(audioBytes)
+
             if (mediaPlayer.isPlaying) {
                 mediaPlayer.stop()
             }
@@ -138,6 +203,7 @@ class ChatViewModel : ViewModel() {
             if (splitIndex == -1) splitIndex = remainingText.lastIndexOf('?', startIndex = maxLength)
             if (splitIndex == -1) splitIndex = remainingText.lastIndexOf('!', startIndex = maxLength)
             if (splitIndex == -1) splitIndex = maxLength
+
             if (splitIndex + 1 >= remainingText.length) {
                 chunks.add(remainingText.trim())
                 remainingText = ""
@@ -150,48 +216,6 @@ class ChatViewModel : ViewModel() {
             chunks.add(remainingText)
         }
         return chunks
-    }
-
-    fun sendMessage(userMessageText: String) {
-        // [Gemini 수정] 세션 ID가 없으면 메시지 전송 불가
-        val sessionId = _uiState.value.sessionId
-        if (_uiState.value.isLoading || userMessageText.isBlank() || sessionId == null) return
-
-        val userMessage = ChatMessage(Author.USER, userMessageText, R.drawable.profile_user, "나")
-        _uiState.update { it.copy(messages = it.messages + userMessage, isLoading = true) }
-
-        viewModelScope.launch {
-            try {
-                // [Gemini 수정] 세션 ID를 UiState에서 가져오기
-                val request = ServerChatRequest(
-                    message = userMessageText,
-                    userId = currentUserId,
-                    sessionId = sessionId
-                )
-
-                val response = ApiClient.whyDoApiService.postChatMessage(request)
-                val aiResponseContent = response.response
-
-                val chunks = splitResponseIntoChunks(aiResponseContent)
-                _uiState.update { it.copy(isLoading = false) }
-
-                chunks.forEach { chunk ->
-                    val aiMessage = ChatMessage(Author.AI, chunk, R.drawable.profile_ai, "은도")
-                    _uiState.update { it.copy(messages = it.messages + aiMessage) }
-                    delay(500)
-                }
-
-                val cleanText = cleanTextForTts(aiResponseContent)
-                speak(cleanText)
-
-            } catch (e: Exception) {
-                Log.e("ChatViewModel", "API Call Failed: ${e.message}")
-                val errorText = "오류가 발생했습니다. 서버가 켜져있는지 확인해주세요."
-                speak(errorText)
-                val errorMessage = ChatMessage(Author.AI, errorText, R.drawable.profile_ai, "은도")
-                _uiState.update { it.copy(messages = it.messages + errorMessage, isLoading = false) }
-            }
-        }
     }
 
     override fun onCleared() {
