@@ -67,7 +67,7 @@ fun ChatListScreen(
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Text,
                             imeAction = ImeAction.Done,
-                            autoCorrect = false
+                            autoCorrectEnabled = false
                         )
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -120,7 +120,7 @@ fun ChatListScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "${userId}님, 안녕하세요",
+                        "${userId}님, 안녕하세요😊",
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp
                     )

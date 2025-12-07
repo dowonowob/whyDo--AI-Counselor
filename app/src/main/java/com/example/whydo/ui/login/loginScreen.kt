@@ -204,7 +204,7 @@ fun SimpleTextField(
         keyboardOptions = KeyboardOptions(
             keyboardType = if (isPassword) KeyboardType.Password else KeyboardType.Text,
             imeAction = ImeAction.Next,
-            autoCorrect = false
+            autoCorrectEnabled = false
         )
     )
 }
