@@ -56,7 +56,7 @@ fun ChatListScreen(
             title = { Text("새 대화 시작") },
             text = {
                 Column {
-                    Text("대화의 주제를 입력해주세요.\n(예: 진로, 연애, 학업)")
+                    Text("화면에 표시 될 대화의 주제를 입력해주세요.\n(예: 진로, 연애, 학업)")
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = newTopic,
