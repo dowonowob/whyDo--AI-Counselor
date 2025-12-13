@@ -25,7 +25,6 @@ class LoginViewModel : ViewModel() {
                 val request = AuthRequest(username, password)
                 val response = ApiClient.whyDoApiService.login(request)
 
-                // [수정] 받은 토큰을 안전하게 저장!
                 TokenManager.saveToken(response.accessToken)
 
                 _uiState.value = LoginUiState(isLoading = false)
@@ -40,13 +39,18 @@ class LoginViewModel : ViewModel() {
         }
     }
 
-    fun signup(username: String, password: String) {
+    // [수정] 회원가입 성공 시 실행할 행동(onSignupSuccess)을 매개변수로 받음
+    fun signup(username: String, password: String, onSignupSuccess: () -> Unit) {
         viewModelScope.launch {
             _uiState.value = LoginUiState(isLoading = true)
             try {
                 val request = AuthRequest(username, password)
                 ApiClient.whyDoApiService.signup(request)
-                _uiState.value = LoginUiState(isLoading = false, errorMessage = "가입 성공! 로그인해주세요.")
+
+                _uiState.value = LoginUiState(isLoading = false)
+                // 가입 성공 시 콜백 실행 (화면 이동 등)
+                onSignupSuccess()
+
             } catch (e: HttpException) {
                 val errorMsg = if (e.code() == 400) "이미 존재하는 아이디입니다." else "가입 실패: ${e.message}"
                 _uiState.value = LoginUiState(isLoading = false, errorMessage = errorMsg)
@@ -54,6 +58,11 @@ class LoginViewModel : ViewModel() {
                 _uiState.value = LoginUiState(isLoading = false, errorMessage = "연결 오류: ${e.message}")
             }
         }
+    }
+
+    // 에러 메시지 초기화용 (화면 이동 시 잔여 에러 제거)
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(errorMessage = null)
     }
 }
 

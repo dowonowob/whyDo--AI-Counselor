@@ -39,7 +39,8 @@ data class SessionListResponse(
 data class SessionSummary(
     @SerializedName("session_id") val sessionId: String,
     @SerializedName("last_message") val lastMessage: String,
-    @SerializedName("timestamp") val timestamp: String
+    @SerializedName("timestamp") val timestamp: String,
+    @SerializedName("category") val category: String? // [추가]
 )
 
 // --- [기록] 채팅 기록 조회용 데이터 모델 ---
@@ -51,6 +52,10 @@ data class ChatMessageItem(
     @SerializedName("role") val role: String,
     @SerializedName("content") val content: String,
     @SerializedName("timestamp") val timestamp: String
+)
+
+data class DeleteSessionRequest(
+    @SerializedName("session_ids") val sessionIds: List<String>
 )
 
 // --- API 명세서 (메뉴판) ---
@@ -78,4 +83,7 @@ interface WhyDoApiService {
     suspend fun getChatHistory(
         @Path("session_id") sessionId: String
     ): ChatHistoryResponse
+
+    @POST("sessions/delete")
+    suspend fun deleteSessions(@Body request: DeleteSessionRequest): ServerChatResponse
 }

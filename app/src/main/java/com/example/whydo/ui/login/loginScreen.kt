@@ -1,8 +1,7 @@
-// /ui/login/LoginScreen.kt
-
 package com.example.whydo.ui.login
 
-import androidx.compose.foundation.background
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -15,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,13 +28,48 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun LoginScreen(
     onLoginSuccess: (String) -> Unit,
-    viewModel: LoginViewModel = viewModel() // 뷰모델 연결
+    onNavigateToSignup: () -> Unit,
+    viewModel: LoginViewModel = viewModel()
 ) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
-    // 뷰모델의 상태(로딩, 에러 메시지 등)를 구독
+    var showExitDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+
+    // 화면 진입 시 에러 초기화
+    LaunchedEffect(Unit) {
+        viewModel.clearError()
+    }
+
+    // 뒤로가기 버튼 감지 -> 팝업 띄우기
+    BackHandler {
+        showExitDialog = true
+    }
+
+    // 종료 확인 팝업 UI
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text("앱 종료") },
+            text = { Text("정말 앱을 종료하시겠습니까?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        (context as? Activity)?.finish()
+                    }
+                ) {
+                    Text("종료", color = Color.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) {
+                    Text("취소")
+                }
+            }
+        )
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -57,7 +92,7 @@ fun LoginScreen(
             )
             Spacer(modifier = Modifier.height(48.dp))
 
-            // 2. 헤더 텍스트
+            // 2. 헤더
             Text(
                 text = "계정 로그인",
                 fontSize = 20.sp,
@@ -72,7 +107,7 @@ fun LoginScreen(
             )
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 3. 입력 필드 (아이디)
+            // 3. 아이디 입력
             SimpleTextField(
                 value = username,
                 onValueChange = { username = it },
@@ -82,7 +117,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 4. 입력 필드 (비밀번호)
+            // 4. 비밀번호 입력
             SimpleTextField(
                 value = password,
                 onValueChange = { password = it },
@@ -91,7 +126,7 @@ fun LoginScreen(
                 isPassword = true
             )
 
-            // [에러 메시지 표시]
+            // 에러 메시지
             if (uiState.errorMessage != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -128,42 +163,19 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 6. 회원가입 버튼 (텍스트 버튼)
+            // 6. 회원가입 버튼
             TextButton(
-                onClick = {
-                    if (username.isNotBlank() && password.isNotBlank()) {
-                        viewModel.signup(username, password)
-                    } else {
-                        // 아이디/비번 입력 안하고 누르면 안내 메시지 표시 (임시로 에러메시지 필드 활용)
-                        // 실제로는 Toast 메시지나 별도 상태로 처리하는 게 더 좋음
-                    }
-                },
+                onClick = onNavigateToSignup,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("계정이 없나요? 입력한 정보로 회원가입 하기", color = Color.Gray)
+                Text("계정이 없나요? 회원가입 하기", color = Color.Gray)
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 7. "--- 또는 ---" 분리선
-            OrDivider()
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 8. 소셜 로그인 버튼 (디자인용)
-            SocialLoginButton(
-                text = "Google 계정으로 계속하기",
-                iconColor = Color.Red
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            SocialLoginButton(
-                text = "Apple 계정으로 계속하기",
-                iconColor = Color.Black
-            )
+            // 소셜 로그인 및 구분선 제거됨
 
             Spacer(modifier = Modifier.weight(1f)) // 하단 여백
 
-            // 9. 하단 약관
+            // 7. 하단 약관
             Text(
                 text = "계속을 클릭하면 당사의 서비스 이용 약관 및 개인정보 처리방침에\n동의하는 것으로 간주됩니다.",
                 fontSize = 11.sp,
@@ -175,8 +187,6 @@ fun LoginScreen(
         }
     }
 }
-
-// --- 재사용 컴포넌트들 ---
 
 @Composable
 fun SimpleTextField(
@@ -198,7 +208,9 @@ fun SimpleTextField(
             focusedBorderColor = Color.Black,
             unfocusedBorderColor = Color.LightGray,
             cursorColor = Color.Black,
-            focusedLabelColor = Color.Black
+            focusedLabelColor = Color.Black,
+            focusedTextColor = Color.Black,
+            unfocusedTextColor = Color.Black
         ),
         visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(
@@ -207,52 +219,4 @@ fun SimpleTextField(
             autoCorrectEnabled = false
         )
     )
-}
-
-@Composable
-fun OrDivider() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFEEEEEE), thickness = 1.dp)
-        Text(
-            text = "또는",
-            color = Color.Gray,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFEEEEEE), thickness = 1.dp)
-    }
-}
-
-@Composable
-fun SocialLoginButton(
-    text: String,
-    iconColor: Color
-) {
-    Button(
-        onClick = { /* 소셜 로그인 로직 (미구현) */ },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(50.dp),
-        shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF5F5F5)),
-        elevation = ButtonDefaults.buttonElevation(0.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .background(iconColor, shape = RoundedCornerShape(50))
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = text,
-                color = Color.Black,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp
-            )
-        }
-    }
 }

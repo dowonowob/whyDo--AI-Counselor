@@ -1,5 +1,3 @@
-// /ui/chat/ChatScreen.kt
-
 package com.example.whydo.ui.chat
 
 import android.Manifest
@@ -7,7 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
 import android.util.Log
-import androidx.activity.compose.BackHandler // [추가] 시스템 뒤로 가기 처리를 위해 필요
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -17,9 +15,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack // [추가] 뒤로 가기 아이콘
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.VolumeOff // [추가]
+import androidx.compose.material.icons.automirrored.filled.VolumeUp // [추가]
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,6 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,12 +45,11 @@ fun ChatRoute(
     userId: String,
     sessionId: String,
     category: String? = null,
-    onBackClick: () -> Unit, // [추가] 뒤로 가기 동작을 전달받음
+    onBackClick: () -> Unit,
     viewModel: ChatViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // [추가] 시스템 뒤로 가기 버튼을 눌렀을 때 onBackClick 실행
     BackHandler(onBack = onBackClick)
 
     LaunchedEffect(userId, sessionId) {
@@ -54,8 +58,10 @@ fun ChatRoute(
 
     ChatScreen(
         uiState = uiState,
+        title = sessionId,
         onSendMessage = { viewModel.sendMessage(it) },
-        onBackClick = onBackClick // [추가] UI 버튼 클릭 시 실행할 동작 전달
+        onBackClick = onBackClick,
+        onToggleMute = { viewModel.toggleMute() } // [추가] 음소거 토글 전달
     )
 }
 
@@ -63,8 +69,10 @@ fun ChatRoute(
 @Composable
 fun ChatScreen(
     uiState: ChatUiState,
+    title: String,
     onSendMessage: (String) -> Unit,
-    onBackClick: () -> Unit // [추가]
+    onBackClick: () -> Unit,
+    onToggleMute: () -> Unit // [추가]
 ) {
     val scrollState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -103,13 +111,31 @@ fun ChatScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("whyDo? 대화하기") },
-                // [추가] 상단 바 왼쪽에 뒤로 가기 화살표 버튼 추가
+                title = {
+                    Text(
+                        text = title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "뒤로 가기"
+                        )
+                    }
+                },
+                // [추가] 오른쪽 액션 버튼 (음소거)
+                actions = {
+                    IconButton(onClick = onToggleMute) {
+                        Icon(
+                            imageVector = if (uiState.isMuted)
+                                Icons.AutoMirrored.Filled.VolumeOff
+                            else
+                                Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = if (uiState.isMuted) "소리 켜기" else "소리 끄기",
+                            tint = if (uiState.isMuted) Color.Gray else Color.Black
                         )
                     }
                 },
@@ -130,7 +156,14 @@ fun ChatScreen(
                     onValueChange = { textState = it },
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("메시지를 입력하거나 마이크를 누르세요") },
-                    enabled = !uiState.isLoading
+                    enabled = !uiState.isLoading,
+
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Send,
+                        autoCorrectEnabled = false
+                    ),
+                    visualTransformation = VisualTransformation.None
                 )
                 Spacer(modifier = Modifier.width(8.dp))
 
@@ -188,6 +221,7 @@ fun ChatScreen(
     }
 }
 
+// ... (하단 MessageBubble 등 컴포넌트 기존 유지) ...
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val horizontalArrangement = if (message.author == Author.USER) Arrangement.End else Arrangement.Start
