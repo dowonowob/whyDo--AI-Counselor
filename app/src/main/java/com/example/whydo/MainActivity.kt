@@ -1,3 +1,5 @@
+// /MainActivity.kt
+
 package com.example.whydo
 
 import android.os.Bundle
@@ -15,7 +17,6 @@ import com.example.whydo.ui.login.LoginScreen
 import com.example.whydo.ui.login.SignupScreen
 import com.example.whydo.ui.theme.WhyDoTheme
 
-// 1. 화면 목록 정의
 enum class Screen {
     Login, Signup, Home, Chat
 }
@@ -28,16 +29,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             WhyDoTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var currentScreen by remember { mutableStateOf(Screen.Login) }
                     var currentUserId by remember { mutableStateOf("") }
                     var currentSessionId by remember { mutableStateOf("") }
                     var selectedCategory by remember { mutableStateOf<String?>(null) }
 
-                    // 2. 화면 전환 로직 (모든 Screen에 대한 처리가 필수!)
+                    // [추가] 제목을 기억할 변수
+                    var currentSessionTitle by remember { mutableStateOf("") }
+
                     when (currentScreen) {
                         Screen.Login -> {
                             LoginScreen(
@@ -45,46 +45,35 @@ class MainActivity : ComponentActivity() {
                                     currentUserId = userId
                                     currentScreen = Screen.Home
                                 },
-                                onNavigateToSignup = {
-                                    currentScreen = Screen.Signup
-                                }
+                                onNavigateToSignup = { currentScreen = Screen.Signup }
                             )
                         }
-
                         Screen.Signup -> {
                             SignupScreen(
-                                onSignupSuccess = {
-                                    currentScreen = Screen.Login
-                                },
-                                onBackClick = {
-                                    currentScreen = Screen.Login
-                                }
+                                onSignupSuccess = { currentScreen = Screen.Login },
+                                onBackClick = { currentScreen = Screen.Login }
                             )
                         }
-
                         Screen.Home -> {
                             ChatListScreen(
                                 userId = currentUserId,
-                                onNavigateToChat = { sessionId, category ->
+                                // [수정] title 파라미터 받기
+                                onNavigateToChat = { sessionId, category, title ->
                                     currentSessionId = sessionId
                                     selectedCategory = category
+                                    currentSessionTitle = title // [추가] 제목 저장
                                     currentScreen = Screen.Chat
                                 },
-                                onLogout = {
-                                    currentScreen = Screen.Login
-                                }
+                                onLogout = { currentScreen = Screen.Login }
                             )
                         }
-
-                        // [이 부분이 빠져서 에러가 났던 것!]
                         Screen.Chat -> {
                             ChatRoute(
                                 userId = currentUserId,
                                 sessionId = currentSessionId,
+                                sessionTitle = currentSessionTitle, // [추가] 제목 전달
                                 category = selectedCategory,
-                                onBackClick = {
-                                    currentScreen = Screen.Home
-                                }
+                                onBackClick = { currentScreen = Screen.Home }
                             )
                         }
                     }

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.whydo.data.local.TokenManager
 import com.example.whydo.data.network.ApiClient
 import com.example.whydo.data.network.DeleteSessionRequest
+import com.example.whydo.data.network.RenameSessionRequest
 import com.example.whydo.data.network.SessionSummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -107,5 +108,22 @@ class ChatListViewModel : ViewModel() {
     // [추가] 선택 모드 취소
     fun clearSelectionMode() {
         _uiState.update { it.copy(isSelectionMode = false, selectedSessions = emptySet()) }
+    }
+
+    fun renameSession(sessionId: String, newTitle: String) {
+        _uiState.update { it.copy(isLoading = true) }
+        viewModelScope.launch {
+            try {
+                ApiClient.whyDoApiService.renameSession(
+                    RenameSessionRequest(sessionId, newTitle)
+                )
+                // 성공하면 목록 새로고침 & 선택 모드 해제
+                _uiState.update { it.copy(isSelectionMode = false, selectedSessions = emptySet()) }
+                loadSessions()
+            } catch (e: Exception) {
+                Log.e("ChatListViewModel", "Rename failed: ${e.message}")
+                _uiState.update { it.copy(isLoading = false) }
+            }
+        }
     }
 }

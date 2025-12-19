@@ -1,9 +1,11 @@
+// /ui/chat/ChatListScreen.kt
+
 package com.example.whydo.ui.chat
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -13,11 +15,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit // [필수] 수정 아이콘
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,7 +36,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -40,7 +43,7 @@ import java.util.Locale
 @Composable
 fun ChatListScreen(
     userId: String,
-    onNavigateToChat: (String, String?) -> Unit,
+    onNavigateToChat: (String, String?, String) -> Unit,
     onLogout: () -> Unit,
     viewModel: ChatListViewModel = viewModel()
 ) {
@@ -50,24 +53,24 @@ fun ChatListScreen(
     // 팝업 상태 관리
     var showNewChatDialog by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) } // 이름 변경 팝업
 
-    // 새 대화 입력 상태
+    // 텍스트 입력 상태
     var newTopic by remember { mutableStateOf("") }
-    // [추가] 입력 에러 메시지 상태
+    var renameText by remember { mutableStateOf("") }
     var inputError by remember { mutableStateOf<String?>(null) }
 
-    val categories = listOf(
-        "학업/시험", "진로/미래", "대인관계", "자존감/자아", "생활습관", "기타"
-    )
+    // 카테고리 선택
+    val categories = listOf("학업/시험", "진로/미래", "대인관계", "자존감/자아", "생활습관", "기타")
     var selectedCategory by remember { mutableStateOf(categories[0]) }
     var expanded by remember { mutableStateOf(false) }
 
-    // 화면 진입 시 목록 로드
+    // 초기 데이터 로드
     LaunchedEffect(Unit) {
         viewModel.loadSessions()
     }
 
-    // 뒤로가기 버튼 처리 로직
+    // 뒤로가기 핸들링
     BackHandler(enabled = true) {
         if (uiState.isSelectionMode) {
             viewModel.clearSelectionMode()
@@ -76,16 +79,14 @@ fun ChatListScreen(
         }
     }
 
-    // 앱 종료 확인 팝업
+    // [팝업 1] 앱 종료 확인
     if (showExitDialog) {
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
             title = { Text("앱 종료") },
             text = { Text("정말 앱을 종료하시겠습니까?") },
             confirmButton = {
-                TextButton(
-                    onClick = { (context as? Activity)?.finish() }
-                ) {
+                TextButton(onClick = { (context as? Activity)?.finish() }) {
                     Text("종료", color = Color.Red)
                 }
             },
@@ -95,13 +96,43 @@ fun ChatListScreen(
         )
     }
 
-    // 새 대화 시작 팝업
+    // [팝업 2] 이름 변경 (수정)
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("채팅방 이름 변경") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    placeholder = { Text("새로운 이름 입력") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val targetId = uiState.selectedSessions.firstOrNull()
+                        if (targetId != null && renameText.isNotBlank()) {
+                            viewModel.renameSession(targetId, renameText)
+                            showRenameDialog = false
+                        }
+                    }
+                ) { Text("변경") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) { Text("취소") }
+            }
+        )
+    }
+
+    // [팝업 3] 새 대화 시작
     if (showNewChatDialog) {
         AlertDialog(
             onDismissRequest = {
                 showNewChatDialog = false
                 newTopic = ""
-                inputError = null // 닫을 때 에러 초기화
+                inputError = null
             },
             title = { Text("새 대화 시작") },
             text = {
@@ -113,7 +144,6 @@ fun ChatListScreen(
                         value = newTopic,
                         onValueChange = {
                             newTopic = it
-                            // [추가] 금지된 문자 검사 로직
                             val forbiddenChars = listOf('/', '?', '&', '#', '\\')
                             if (it.any { char -> char in forbiddenChars }) {
                                 inputError = "특수문자(/, ?, &, #, \\)는 사용할 수 없습니다."
@@ -124,7 +154,7 @@ fun ChatListScreen(
                         placeholder = { Text("주제 입력") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        isError = inputError != null, // 에러 시 빨간 테두리
+                        isError = inputError != null,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Text,
                             imeAction = ImeAction.Done,
@@ -132,39 +162,23 @@ fun ChatListScreen(
                         )
                     )
 
-                    // [추가] 에러 메시지 출력
                     if (inputError != null) {
-                        Text(
-                            text = inputError!!,
-                            color = Color.Red,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-                        )
+                        Text(text = inputError!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-
                     Text("가장 가까운 고민 유형을 골라주세요.")
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(
-                            onClick = { expanded = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
                             Text(selectedCategory)
                         }
-                        DropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false }
-                        ) {
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             categories.forEach { category ->
                                 DropdownMenuItem(
                                     text = { Text(category) },
-                                    onClick = {
-                                        selectedCategory = category
-                                        expanded = false
-                                    }
+                                    onClick = { selectedCategory = category; expanded = false }
                                 )
                             }
                         }
@@ -176,21 +190,16 @@ fun ChatListScreen(
                     onClick = {
                         if (newTopic.isNotBlank() && inputError == null) {
                             showNewChatDialog = false
-                            onNavigateToChat(newTopic, selectedCategory)
+                            onNavigateToChat(newTopic, selectedCategory, newTopic)
                             newTopic = ""
                             selectedCategory = categories[0]
                         }
                     },
-                    // [추가] 에러가 있거나 비어있으면 버튼 비활성화
                     enabled = newTopic.isNotBlank() && inputError == null
                 ) { Text("시작") }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showNewChatDialog = false
-                    newTopic = ""
-                    inputError = null
-                }) { Text("취소") }
+                TextButton(onClick = { showNewChatDialog = false; newTopic = ""; inputError = null }) { Text("취소") }
             }
         )
     }
@@ -207,19 +216,31 @@ fun ChatListScreen(
                 },
                 actions = {
                     if (uiState.isSelectionMode) {
+                        // [복구됨] 수정(연필) 아이콘: 딱 1개만 선택되었을 때 표시
+                        if (uiState.selectedSessions.size == 1) {
+                            IconButton(onClick = {
+                                // 현재 선택된 방의 기존 이름을 가져와서 미리 채워줌 (UX 개선)
+                                val targetId = uiState.selectedSessions.first()
+                                val targetSession = uiState.sessions.find { it.sessionId == targetId }
+                                renameText = targetSession?.title ?: targetSession?.sessionId ?: ""
+                                showRenameDialog = true
+                            }) {
+                                Icon(Icons.Filled.Edit, contentDescription = "이름 변경", tint = Color.Black)
+                            }
+                        }
+
+                        // 삭제 버튼
                         IconButton(onClick = { viewModel.deleteSelectedSessions() }) {
                             Icon(Icons.Default.Delete, contentDescription = "삭제", tint = Color.Red)
                         }
+                        // 취소 버튼
                         IconButton(onClick = { viewModel.clearSelectionMode() }) {
                             Icon(Icons.Default.Close, contentDescription = "취소")
                         }
                     } else {
+                        // 로그아웃 버튼
                         IconButton(onClick = { viewModel.logout(onLogout) }) {
-                            Icon(
-                                // AutoMirrored 안에 있는 아이콘을 사용
-                                imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                                contentDescription = "로그아웃"
-                            )
+                            Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "로그아웃")
                         }
                     }
                 },
@@ -273,7 +294,7 @@ fun ChatListScreen(
                         val isSelected = uiState.selectedSessions.contains(session.sessionId)
 
                         ChatListItem(
-                            sessionId = session.sessionId,
+                            sessionId = session.title ?: session.sessionId,
                             lastMessage = session.lastMessage,
                             date = formatTime(session.timestamp),
                             isSelected = isSelected,
@@ -281,13 +302,14 @@ fun ChatListScreen(
                                 if (uiState.isSelectionMode) {
                                     viewModel.toggleSelection(session.sessionId)
                                 } else {
-                                    // [수정] session.category를 넘겨줍니다! (기존엔 null이었음)
-                                    onNavigateToChat(session.sessionId, session.category)
+                                    onNavigateToChat(
+                                        session.sessionId,
+                                        session.category,
+                                        session.title ?: session.sessionId
+                                    )
                                 }
                             },
-                            onLongClick = {
-                                viewModel.toggleSelectionMode(session.sessionId)
-                            }
+                            onLongClick = { viewModel.toggleSelectionMode(session.sessionId) }
                         )
                     }
                 }
@@ -323,16 +345,11 @@ fun ChatListItem(
         border = BorderStroke(borderWidth, borderColor)
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(if (isSelected) Color(0xFF6200EE) else Color(0xFFE8EAF6)),
+                modifier = Modifier.size(48.dp).clip(CircleShape).background(if (isSelected) Color(0xFF6200EE) else Color(0xFFE8EAF6)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

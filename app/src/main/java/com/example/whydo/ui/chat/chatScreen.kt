@@ -1,3 +1,5 @@
+// /ui/chat/ChatScreen.kt
+
 package com.example.whydo.ui.chat
 
 import android.Manifest
@@ -19,8 +21,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.automirrored.filled.VolumeOff // [추가]
-import androidx.compose.material.icons.automirrored.filled.VolumeUp // [추가]
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,6 +46,7 @@ import kotlinx.coroutines.launch
 fun ChatRoute(
     userId: String,
     sessionId: String,
+    sessionTitle: String, // [추가] 제목 받기
     category: String? = null,
     onBackClick: () -> Unit,
     viewModel: ChatViewModel = viewModel()
@@ -58,10 +61,10 @@ fun ChatRoute(
 
     ChatScreen(
         uiState = uiState,
-        title = sessionId,
+        title = sessionTitle, // [수정] sessionId 대신 sessionTitle 사용!
         onSendMessage = { viewModel.sendMessage(it) },
         onBackClick = onBackClick,
-        onToggleMute = { viewModel.toggleMute() } // [추가] 음소거 토글 전달
+        onToggleMute = { viewModel.toggleMute() }
     )
 }
 
@@ -72,7 +75,7 @@ fun ChatScreen(
     title: String,
     onSendMessage: (String) -> Unit,
     onBackClick: () -> Unit,
-    onToggleMute: () -> Unit // [추가]
+    onToggleMute: () -> Unit
 ) {
     val scrollState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -126,7 +129,6 @@ fun ChatScreen(
                         )
                     }
                 },
-                // [추가] 오른쪽 액션 버튼 (음소거)
                 actions = {
                     IconButton(onClick = onToggleMute) {
                         Icon(
@@ -221,7 +223,6 @@ fun ChatScreen(
     }
 }
 
-// ... (하단 MessageBubble 등 컴포넌트 기존 유지) ...
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val horizontalArrangement = if (message.author == Author.USER) Arrangement.End else Arrangement.Start
