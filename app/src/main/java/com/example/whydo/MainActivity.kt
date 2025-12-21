@@ -34,9 +34,8 @@ class MainActivity : ComponentActivity() {
                     var currentUserId by remember { mutableStateOf("") }
                     var currentSessionId by remember { mutableStateOf("") }
                     var selectedCategory by remember { mutableStateOf<String?>(null) }
-
-                    // [추가] 제목을 기억할 변수
                     var currentSessionTitle by remember { mutableStateOf("") }
+                    var currentPersona by remember { mutableStateOf("friend") }
 
                     when (currentScreen) {
                         Screen.Login -> {
@@ -58,10 +57,11 @@ class MainActivity : ComponentActivity() {
                             ChatListScreen(
                                 userId = currentUserId,
                                 // [수정] title 파라미터 받기
-                                onNavigateToChat = { sessionId, category, title ->
+                                onNavigateToChat = { sessionId, category, title, persona ->
                                     currentSessionId = sessionId
                                     selectedCategory = category
-                                    currentSessionTitle = title // [추가] 제목 저장
+                                    currentSessionTitle = title
+                                    currentPersona = persona
                                     currentScreen = Screen.Chat
                                 },
                                 onLogout = { currentScreen = Screen.Login }
@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
                                 sessionId = currentSessionId,
                                 sessionTitle = currentSessionTitle, // [추가] 제목 전달
                                 category = selectedCategory,
+                                persona = currentPersona,
                                 onBackClick = { currentScreen = Screen.Home }
                             )
                         }

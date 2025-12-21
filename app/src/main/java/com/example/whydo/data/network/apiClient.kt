@@ -9,6 +9,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 object ApiClient {
 
     private const val WHYDO_SERVER_BASE_URL = "https://exhilaratingly-nobiliary-ingrid.ngrok-free.dev/"
+    //private const val WHYDO_SERVER_BASE_URL = "http://10.0.2.2:8000/"
 
     // [추가] 모든 요청에 토큰을 자동으로 붙여주는 인터셉터
     private val authInterceptor = Interceptor { chain ->

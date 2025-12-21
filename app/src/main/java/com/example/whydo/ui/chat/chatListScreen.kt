@@ -43,7 +43,7 @@ import java.util.Locale
 @Composable
 fun ChatListScreen(
     userId: String,
-    onNavigateToChat: (String, String?, String) -> Unit,
+    onNavigateToChat: (String, String?, String, String) -> Unit,
     onLogout: () -> Unit,
     viewModel: ChatListViewModel = viewModel()
 ) {
@@ -59,6 +59,7 @@ fun ChatListScreen(
     var newTopic by remember { mutableStateOf("") }
     var renameText by remember { mutableStateOf("") }
     var inputError by remember { mutableStateOf<String?>(null) }
+    var selectedPersona by remember { mutableStateOf("friend") }
 
     // 카테고리 선택
     val categories = listOf("학업/시험", "진로/미래", "대인관계", "자존감/자아", "생활습관", "기타")
@@ -183,6 +184,25 @@ fun ChatListScreen(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("상담사 스타일을 선택해주세요.")
+
+                    // 라디오 버튼 그룹 (친구 vs 전문가)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = selectedPersona == "friend",
+                            onClick = { selectedPersona = "friend" }
+                        )
+                        Text("친구 (공감)", fontSize = 14.sp)
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        RadioButton(
+                            selected = selectedPersona == "expert",
+                            onClick = { selectedPersona = "expert" }
+                        )
+                        Text("전문가 (분석)", fontSize = 14.sp)
+                    }
                 }
             },
             confirmButton = {
@@ -190,9 +210,10 @@ fun ChatListScreen(
                     onClick = {
                         if (newTopic.isNotBlank() && inputError == null) {
                             showNewChatDialog = false
-                            onNavigateToChat(newTopic, selectedCategory, newTopic)
+                            onNavigateToChat(newTopic, selectedCategory, newTopic, selectedPersona)
                             newTopic = ""
                             selectedCategory = categories[0]
+                            selectedPersona = "expert"
                         }
                     },
                     enabled = newTopic.isNotBlank() && inputError == null
@@ -305,7 +326,8 @@ fun ChatListScreen(
                                     onNavigateToChat(
                                         session.sessionId,
                                         session.category,
-                                        session.title ?: session.sessionId
+                                        session.title ?: session.sessionId,
+                                        "expert"
                                     )
                                 }
                             },
@@ -357,6 +379,7 @@ fun ChatListItem(
                     contentDescription = null,
                     tint = if (isSelected) Color.White else Color(0xFF3F51B5)
                 )
+
             }
 
             Spacer(modifier = Modifier.width(16.dp))

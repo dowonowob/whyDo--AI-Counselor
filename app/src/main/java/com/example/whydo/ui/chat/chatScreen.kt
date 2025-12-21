@@ -48,6 +48,7 @@ fun ChatRoute(
     sessionId: String,
     sessionTitle: String, // [추가] 제목 받기
     category: String? = null,
+    persona: String = "friend",
     onBackClick: () -> Unit,
     viewModel: ChatViewModel = viewModel()
 ) {
@@ -56,7 +57,7 @@ fun ChatRoute(
     BackHandler(onBack = onBackClick)
 
     LaunchedEffect(userId, sessionId) {
-        viewModel.setInfoAndStart(userId, sessionId, category)
+        viewModel.setInfoAndStart(userId, sessionId, category, persona)
     }
 
     ChatScreen(

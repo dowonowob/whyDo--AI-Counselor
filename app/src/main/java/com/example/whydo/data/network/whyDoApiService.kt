@@ -24,7 +24,8 @@ data class ServerChatRequest(
     @SerializedName("message") val message: String,
     @SerializedName("user_id") val userId: String,
     @SerializedName("session_id") val sessionId: String,
-    @SerializedName("category") val category: String? = null
+    @SerializedName("category") val category: String? = null,
+    @SerializedName("persona") val persona: String = "expert"
 )
 
 data class ServerChatResponse(
